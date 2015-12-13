@@ -5,11 +5,9 @@ import (
 	"net/rpc"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/RyanPrintup/nimbus"
-	"github.com/wolfchase/rainbot"
 )
 
 type CommandFun func(*nimbus.Message, []string)
@@ -33,26 +31,26 @@ type Module struct {
 	Desc      string
 	Master    *rpc.Client
 	RpcPort   string
-	Listeners map[rainbot.Event][]Listener
-	Commands  map[rainbot.CommandName]*Command
+	Listeners map[string][]Listener
+	Commands  map[string]*Command
 }
 
 func MakeModule(name string, desc string) *Module {
 	m := &Module{
 		Name:      name,
 		Desc:      desc,
-		Listeners: make(map[rainbot.Event][]Listener),
-		Commands:  make(map[rainbot.CommandName]*Command),
-		Master:    rpc.NewClientWithCodec(rainbot.RpcCodecClient()), // Connect to master
+		Listeners: make(map[string][]Listener),
+		Commands:  make(map[string]*Command),
+		Master:    rpc.NewClientWithCodec(RpcCodecClient()), // Connect to master
 	}
 	// Start Provider server
 	m.startRpcServer()
 	return m
 }
 
-func execName() rainbot.ModuleName {
-	return rainbot.ModuleName(strings.TrimSuffix(filepath.Base(os.Args[0]),
-		filepath.Ext(filepath.Base(os.Args[0]))))
+func execName() string {
+	return strings.TrimSuffix(filepath.Base(os.Args[0]),
+		filepath.Ext(filepath.Base(os.Args[0])))
 }
 
 func (m *Module) startRpcServer() {
@@ -69,7 +67,7 @@ func (m *Module) startRpcServer() {
 	go func() {
 		for {
 			conn, _ := provider.Accept()
-			rpc.ServeCodec(rainbot.RpcCodecServer(conn))
+			rpc.ServeCodec(RpcCodecServer(conn))
 		}
 	}()
 }
@@ -88,15 +86,18 @@ func (m *Module) Say(ch string, text string) {
 	m.Master.Call("Master.Send", ch+" :"+text, &result)
 }
 
-func (m *Module) RawListener(event rainbot.Event, l func(*nimbus.Message)) bool {
+func (m *Module) RawListener(event string, l func(*nimbus.Message)) bool {
 	m.Listeners[event] = append(m.Listeners[event], l)
 	return true
 }
 
-func (m *Module) CommandHook(name rainbot.CommandName, c *rainbot.Command) {
+func (m *Module) CommandHook(name string, c *Command) {
 	result := ""
-	err := m.Master.Call("Master.RegisterCommand",
-		rainbot.CommandRequest{name, execName()}, &result)
+	data := struct {
+		Name   string
+		Module string
+	}{name, execName()}
+	err := m.Master.Call("Master.RegisterCommand", data, &result)
 	if err != nil {
 		return
 	}
@@ -105,7 +106,11 @@ func (m *Module) CommandHook(name rainbot.CommandName, c *rainbot.Command) {
 }
 
 func (m *Module) Register() (result string, err error) {
-	m.Master.Call("Master.Reg", rainbot.Ticket{m.RpcPort, execName()}, &result)
+	data := struct {
+		Port string
+		Name string
+	}{m.RpcPort, execName()}
+	m.Master.Call("Master.Reg", data, &result)
 	m.Master.Call("Master.Loop", "", &result)
 	return result, nil
 }
@@ -114,25 +119,25 @@ type ModuleApi struct {
 	M *Module
 }
 
-func (mpi ModuleApi) InvokeCommand(d *rainbot.CommandData, result *string) error {
+type IrcData struct {
+	Event string
+	Msg   *nimbus.Message
+}
+
+type CommandData struct {
+	Msg  *nimbus.Message
+	Name string
+	Args []string
+}
+
+func (mpi ModuleApi) InvokeCommand(d *CommandData, result *string) error {
 	mpi.M.Commands[d.Name].Fun(d.Msg, d.Args)
 	return nil
 }
 
-func (mpi ModuleApi) Dispatch(d *rainbot.IrcData, result *string) error {
+func (mpi ModuleApi) Dispatch(d *IrcData, result *string) error {
 	for _, listener := range mpi.M.Listeners[d.Event] {
 		go listener(d.Msg)
 	}
 	return nil
-}
-
-func getOpenPort() string {
-	for i := 65535; i >= 49152; i-- {
-		conn, err := net.Listen("tcp", ":"+strconv.Itoa(i))
-		if err == nil {
-			conn.Close()
-			return strconv.Itoa(i)
-		}
-	}
-	return ""
 }
