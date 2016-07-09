@@ -33,9 +33,10 @@ type Module struct {
 	RpcPort   string
 	Listeners map[string][]Listener
 	Commands  map[string]*Command
+	Provider  net.Listener
 }
 
-func MakeModule(name string, desc string) *Module {
+func NewModule(name string, desc string) *Module {
 	m := &Module{
 		Name:      name,
 		Desc:      desc,
@@ -44,7 +45,7 @@ func MakeModule(name string, desc string) *Module {
 		Master:    rpc.NewClientWithCodec(RpcCodecClient()), // Connect to master
 	}
 	// Start Provider server
-	m.startRpcServer()
+	m.initRpcServer()
 	return m
 }
 
@@ -53,23 +54,23 @@ func execName() string {
 		filepath.Ext(filepath.Base(os.Args[0])))
 }
 
-func (m *Module) startRpcServer() {
+func (m *Module) initRpcServer() {
 	port := getOpenPort()
 	if port == "" {
 		return // Handle
 	}
 	rpc.RegisterName(string(execName()), ModuleApi{m})
-	provider, err := net.Listen("tcp", ":"+port)
+	var err error
+	m.Provider, err = net.Listen("tcp", ":"+port)
 	if err != nil {
 		return // Handle
 	}
 	m.RpcPort = port
-	go func() {
-		for {
-			conn, _ := provider.Accept()
-			rpc.ServeCodec(RpcCodecServer(conn))
-		}
-	}()
+}
+
+func (m *Module) startRpcServer() {
+	conn, _ := m.Provider.Accept()
+	rpc.ServeCodec(RpcCodecServer(conn))
 }
 
 func (m *Module) GetName() string {
@@ -91,7 +92,7 @@ func (m *Module) RawListener(event string, l func(*nimbus.Message)) bool {
 	return true
 }
 
-func (m *Module) CommandHook(name string, c *Command) {
+func (m *Module) AddCommand(name string, c *Command) {
 	result := ""
 	data := struct {
 		Name   string
@@ -110,8 +111,8 @@ func (m *Module) Register() (result string, err error) {
 		Port string
 		Name string
 	}{m.RpcPort, execName()}
-	m.Master.Call("Master.Reg", data, &result)
-	m.Master.Call("Master.Loop", "", &result)
+	m.Master.Call("Master.Register", data, &result)
+	m.startRpcServer()
 	return result, nil
 }
 
