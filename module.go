@@ -1,18 +1,19 @@
 package module
 
 import (
+	"fmt"
 	"net"
 	"net/rpc"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/RyanPrintup/nimbus"
+	"gopkg.in/sorcix/irc.v1"
 )
 
-type CommandFun func(*nimbus.Message, []string)
-type TriggerFun func(*nimbus.Message) bool
-type Listener func(*nimbus.Message)
+type CommandFun func(*irc.Message, []string)
+type TriggerFun func(*irc.Message) bool
+type Listener func(*irc.Message)
 
 type Command struct {
 	Help string
@@ -87,7 +88,7 @@ func (m *Module) Say(ch string, text string) {
 	m.Master.Call("Master.Send", ch+" :"+text, &result)
 }
 
-func (m *Module) RawListener(event string, l func(*nimbus.Message)) bool {
+func (m *Module) RawListener(event string, l func(*irc.Message)) bool {
 	m.Listeners[event] = append(m.Listeners[event], l)
 	return true
 }
@@ -95,8 +96,8 @@ func (m *Module) RawListener(event string, l func(*nimbus.Message)) bool {
 func (m *Module) AddCommand(name string, c *Command) {
 	result := ""
 	data := struct {
-		Name   string
-		Module string
+		CommandName string
+		ModuleName  string
 	}{name, execName()}
 	err := m.Master.Call("Master.RegisterCommand", data, &result)
 	if err != nil {
@@ -108,10 +109,15 @@ func (m *Module) AddCommand(name string, c *Command) {
 
 func (m *Module) Register() (result string, err error) {
 	data := struct {
-		Port string
-		Name string
+		Port       string
+		ModuleName string
 	}{m.RpcPort, execName()}
-	m.Master.Call("Master.Register", data, &result)
+	fmt.Println("registering")
+	err = m.Master.Call("Master.Register", data, &result)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Println("done")
 	m.startRpcServer()
 	return result, nil
 }
@@ -122,11 +128,11 @@ type ModuleApi struct {
 
 type IrcData struct {
 	Event string
-	Msg   *nimbus.Message
+	Msg   *irc.Message
 }
 
 type CommandData struct {
-	Msg  *nimbus.Message
+	Msg  *irc.Message
 	Name string
 	Args []string
 }
