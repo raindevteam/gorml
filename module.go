@@ -43,7 +43,6 @@ func NewModule(name string, desc string) *Module {
 		Desc:      desc,
 		Listeners: make(map[string][]Listener),
 		Commands:  make(map[string]*Command),
-		Master:    rpc.NewClientWithCodec(RpcCodecClient()), // Connect to master
 	}
 	// Start Provider server
 	m.initRpcServer()
@@ -74,6 +73,16 @@ func (m *Module) startRpcServer() {
 	rpc.ServeCodec(RpcCodecServer(conn))
 }
 
+func (m *Module) JoinChannel(caller string, channel string, password string) (result string) {
+	JoinData := struct {
+		Caller   string
+		Channel  string
+		Password string
+	}{caller, channel, ""}
+	m.Master.Call("Master.JoinChannel", JoinData, &result)
+	return
+}
+
 func (m *Module) GetName() string {
 	return m.Name
 }
@@ -94,30 +103,42 @@ func (m *Module) RawListener(event string, l func(*irc.Message)) bool {
 }
 
 func (m *Module) AddCommand(name string, c *Command) {
+	m.Commands[name] = c
+}
+
+func (m *Module) registerCommand(name string) {
 	result := ""
+
+	// RegisterCommand payload
 	data := struct {
 		CommandName string
 		ModuleName  string
 	}{name, execName()}
+
 	err := m.Master.Call("Master.RegisterCommand", data, &result)
 	if err != nil {
 		return
 	}
-
-	m.Commands[name] = c
 }
 
-func (m *Module) Register() (result string, err error) {
+func (m *Module) Register(cargs []string) (result string, err error) {
+	m.Master = rpc.NewClientWithCodec(RpcCodecClient(cargs[1]))
+
+	for name := range m.Commands {
+		m.registerCommand(name)
+	}
+
+	// Register Payload
 	data := struct {
 		Port       string
 		ModuleName string
 	}{m.RpcPort, execName()}
-	fmt.Println("registering")
+
 	err = m.Master.Call("Master.Register", data, &result)
 	if err != nil {
 		fmt.Println(err.Error())
 	}
-	fmt.Println("done")
+
 	m.startRpcServer()
 	return result, nil
 }
@@ -146,5 +167,9 @@ func (mpi ModuleApi) Dispatch(d *IrcData, result *string) error {
 	for _, listener := range mpi.M.Listeners[d.Event] {
 		go listener(d.Msg)
 	}
+	return nil
+}
+
+func (mpi ModuleApi) Cleanup(d interface{}, result *string) error {
 	return nil
 }

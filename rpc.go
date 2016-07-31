@@ -9,8 +9,8 @@ import (
 	"strconv"
 )
 
-func RpcCodecClient() rpc.ClientCodec {
-	conn, err := net.Dial("tcp", "localhost:5555")
+func RpcCodecClient(port string) rpc.ClientCodec {
+	conn, err := net.Dial("tcp", "localhost:"+port)
 	if err != nil {
 		fmt.Println(err)
 		return nil
