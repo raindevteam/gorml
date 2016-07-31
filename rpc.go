@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-	"strconv"
 )
 
 func RpcCodecClient(port string) rpc.ClientCodec {
@@ -20,15 +19,4 @@ func RpcCodecClient(port string) rpc.ClientCodec {
 
 func RpcCodecServer(conn io.ReadWriteCloser) rpc.ServerCodec {
 	return jsonrpc.NewServerCodec(conn)
-}
-
-func getOpenPort() string {
-	for i := 65535; i >= 49152; i-- {
-		conn, err := net.Listen("tcp", ":"+strconv.Itoa(i))
-		if err == nil {
-			conn.Close()
-			return strconv.Itoa(i)
-		}
-	}
-	return ""
 }

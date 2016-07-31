@@ -36,9 +36,8 @@ func main() {
 }
 ```
 
-Adding commands this way disallows you from providing help text. We hope to change this in the 
-future. It also isn't much less code than the next example. If you want a smaller footprint for
-simpler commands and don't mind using Python, we recommend [pyrml](https://github.com/raindevteam/pyrml)
+It isn't much less code than the next example. If you want a smaller footprint for simpler commands 
+and don't mind using Python, we recommend [pyrml](https://github.com/raindevteam/pyrml)
 
 And here's a slightly more complex one that uses a struct
 
@@ -63,13 +62,17 @@ func main() {
 	m := &Echo{module.NewModule("Echo", "An echo module")}
 
 	m.AddCommand("echo", &module.Command{
-		Help: ",
-		Fun:  m.Info,
+		Help: "Repeats what you give it",
+		Fun:  m.Echo,
 	})
 
 	m.Register(os.Args)
 }
 ```
+
+You may also quickly create some boilerplate code if you have the Rain cli installed using:
+
+    $ rain m go module-name
 
 After writing your module, you may install it with go install. You can then reference the module in
 your Rain powered Bot as so:
@@ -77,5 +80,5 @@ your Rain powered Bot as so:
 ```yaml
 modules:
   go:
-    echo: path/to/folder/holding/srcfolder # i.e. github.com/youruser
+    echo: path/to/srcfolder # i.e. github.com/youruser NOT github.com/youruser/yourmodule
 ```
